@@ -1,0 +1,71 @@
+import os
+import requests
+from telegram import Bot
+import time
+import logging
+import random
+
+# ===== CONFIGURAÇÕES PELO RAILWAY =====
+TOKEN = os.environ.get("8293487711:AAGhvSNWqzeGLVcTHd6WWvEfaaxeh_sFwF0")         # Token do BotFather
+CHAT_ID = os.environ.get("-1002655962757")     # ID do grupo ou canal
+AFILIADO = os.environ.get("2aTDiLB")   # Código de afiliado Mercado Livre
+
+TEMPO_ENTRE_CICLOS = int(os.environ.get("TEMPO_ENTRE_CICLOS", 3600))  # Intervalo em segundos
+
+# Categorias que deseja postar (palavra-chave de busca e faixa de preço)
+CATEGORIAS = [
+    {"termo": "smartphone", "min": 200, "max": 1500, "qtd": 3},
+    {"termo": "fones de ouvido", "min": 50, "max": 500, "qtd": 3},
+    {"termo": "relógio smartwatch", "min": 100, "max": 800, "qtd": 2},
+]
+
+logging.basicConfig(level=logging.INFO)
+bot = Bot(token=TOKEN)
+
+# ===== FUNÇÕES =====
+def buscar_produtos(termo):
+    url = f"https://api.mercadolibre.com/sites/MLB/search?q={termo}&sort=price_asc&limit=50"
+    r = requests.get(url)
+    return r.json()["results"]
+
+def gerar_link_afiliado(permalink):
+    return f"{permalink}&mpp={AFILIADO}" if "?" in permalink else f"{permalink}?mpp={AFILIADO}"
+
+def formatar_mensagem(produto):
+    emojis = ["🔥", "💥", "⚡", "💰", "🛒"]
+    frete = "Grátis" if produto.get('shipping', {}).get('free_shipping') else "Consultar"
+    return (
+        f"{random.choice(emojis)} *OFERTA IMPERDÍVEL!*\n\n"
+        f"🛒 *{produto['title']}*\n"
+        f"💰 *R$ {produto['price']:.2f}*\n"
+        f"📦 Frete: {frete}\n\n"
+        f"🔗 [COMPRAR AGORA]({gerar_link_afiliado(produto['permalink'])})\n\n"
+        f"#ofertas #{produto['category_id']} #descontos"
+    )
+
+# ===== LOOP PRINCIPAL =====
+while True:
+    try:
+        for categoria in CATEGORIAS:
+            logging.info(f"Buscando produtos para: {categoria['termo']}")
+            produtos = buscar_produtos(categoria["termo"])
+            enviados = 0
+            for p in produtos:
+                if categoria["min"] <= p['price'] <= categoria["max"]:
+                    mensagem = formatar_mensagem(p)
+                    bot.send_photo(
+                        chat_id=CHAT_ID,
+                        photo=p['thumbnail'],
+                        caption=mensagem,
+                        parse_mode="Markdown"
+                    )
+                    enviados += 1
+                    time.sleep(3)  # Pequena pausa para não sobrecarregar
+                    if enviados >= categoria["qtd"]:
+                        break
+            logging.info(f"{enviados} produtos enviados para a categoria {categoria['termo']}")
+        logging.info(f"Aguardando {TEMPO_ENTRE_CICLOS} segundos para o próximo ciclo...")
+        time.sleep(TEMPO_ENTRE_CICLOS)
+    except Exception as e:
+        logging.error(f"Erro: {e}")
+        time.sleep(60))
